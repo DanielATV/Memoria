@@ -1,0 +1,31 @@
+Objetivo de esta versión:
+- Una versión todo en uno, que permita ejecutar cada método por si sólo
+para realizar First Step.
+
+
+Parámetros:
+        InstanciaFile = argv[1];
+        Seed = atoi(argv[2]);
+        TotalAnts = atoi(argv[3]);
+        iteraciones = atoi(argv[4]);
+        alpha = atof(argv[5]);
+        beta = atof(argv[6]);
+        ph_max = atof(argv[7]);
+        ph_min = atof(argv[8]);
+        rho = atof(argv[9]);
+
+        Parametros p_1:
+
+        Budget = atof(argv[10]);
+        alpha_p1 = atof(argv[11]);
+		beta_p1 = atof(argv[12]);
+		rho_p1 = atof(argv[13]);
+		taumax_p1 = atof(argv[14]);
+		Method = atoi(argv[15]);
+		Stats = atoi(argv[16]); //1: calcular gaps
+
+Esta versión de OL-AK permite:
+
+1) Ejecutar AK por si sólo. Para esto se debe setear en cero Budget, parámetros p1,
+Stats, Method.
+2) ./AK ../../AllInst/OR5x100-0.25_8.dat 4947 4 1000 1.0000 6.4330 26.5240 0.01 0.1760 0 0 0 0 0 0 0 0
