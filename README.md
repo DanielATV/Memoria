@@ -9,7 +9,7 @@ El siguiente código es una modificación al código de EVOKA. La modificación 
  Una vez terminada la evaluación se utiliza el modelo para determinar si las configuraciones cruzadas deben ser mutadas o no.
 
 ### Instalación
-TBD
+sudo apt install libmlpack-dev mlpack-bin libarmadillo-dev 
 
 ### Ejecución
 
