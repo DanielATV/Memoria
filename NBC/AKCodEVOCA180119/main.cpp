@@ -1,14 +1,31 @@
-#define PY_SSIZE_T_CLEAN
-#include <Python.h>
 #include "includes.h"
 #include "globales.h"
 #include <errno.h>
+
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <sstream>
 #include <string>
 #include <cstring>
+
+#include <mlpack/core.hpp>
+#include <mlpack/methods/naive_bayes/naive_bayes_classifier.hpp>
+#include <mlpack/core/data/normalize_labels.hpp>
+#include <mlpack/core/data/split_data.hpp>
+#include <mlpack/core/cv/metrics/f1.hpp>
+#include <mlpack/core/cv/metrics/accuracy.hpp>
+
+
+using namespace mlpack;
+using namespace mlpack::naive_bayes;
+using namespace mlpack::data;
+using namespace mlpack::cv;
+
+naive_bayes::NaiveBayesClassifier<> nbc;
+arma::Row<size_t> labels;
+arma::Col<size_t> mappings;
+
 
 
 
@@ -24,9 +41,6 @@ float tn=0;
 float fn= 0;
 int dataThreshold;
 int evalThreshold;
-
-PyObject *pName, *pModule, *pFunc;
-PyObject *pArgs, *pValue;
 
 //Guardar los datos para entrenar el modelo
 void guardar_datos (calibracion *cal_temp, string label, int param){
@@ -71,13 +85,15 @@ void guardar_stats (float tp, float fp, float tn,float fn){
 }
 
 //Transforma la configuración para ser usada por el modelo
-string transformar_dato(calibracion *cal_temp){
+string transformar_dato(calibracion *cal_temp, int param){
   string holdString;
 
   holdString= to_string(cal_temp->parametro[0]);
   for(int i=1; i< cantidad_parametros; i++){
     holdString= holdString+ ","+ to_string(cal_temp->parametro[i]) ;
   };
+
+  holdString= holdString+ ","+ to_string(param);
 
   return holdString;
 }
@@ -377,62 +393,17 @@ void agregar_calibracion_cruzada_y_calibracion_mutada(conjunto * co)
       cout<<"Entrenando Modelo"<<endl;
     };
 
-    /* Cambio de directorio base */
-    Py_Initialize();
-    PyRun_SimpleString("import sys");
-    PyRun_SimpleString("import os");
-    PyRun_SimpleString("sys.path.append(os.getcwd())");
-    pName = PyUnicode_DecodeFSDefault("modelos");
+    /*Data input*/
+    
+    arma::mat commaData;
+    mlpack::data::Load("datos.txt",commaData);
+    arma::Col<size_t> mappings;
+    arma::Row<size_t> target;
+    data::NormalizeLabels(commaData.row(commaData.n_rows - 1), target, mappings);
+    commaData.shed_row(commaData.n_rows -1);
 
-    pModule = PyImport_Import(pName);
-    Py_DECREF(pName);
-    if (pModule != NULL) {
-
-      pFunc = PyObject_GetAttrString(pModule, "train");
-      //std::cout << argc << std::endl;
-      /* pFunc is a new reference */
-        
-      if (pFunc && PyCallable_Check(pFunc)) {
-        /* Tupla de parametros */
-        pArgs = PyTuple_New(cantidad_parametros);
-        for (int i = 0; i < cantidad_parametros; ++i) {
-            pValue = PyLong_FromLong(1);
-            if (!pValue) {
-                Py_DECREF(pArgs);
-                Py_DECREF(pModule);
-                fprintf(stderr, "Cannot convert argument\n");
-                
-            }
-            PyTuple_SetItem(pArgs, i, pValue);
-        }
-          
-        pValue = PyObject_CallObject(pFunc, NULL);
-
-        Py_DECREF(pArgs);
-        if (pValue != NULL) {
-            fprintf(stderr,"Call Succesful\n");
-            Py_DECREF(pValue);
-        }
-        else {
-            Py_DECREF(pFunc);
-            Py_DECREF(pModule);
-            PyErr_Print();
-            fprintf(stderr,"Call failed\n");
-            
-        }
-      }
-      else {
-          if (PyErr_Occurred())
-              PyErr_Print();
-          fprintf(stderr, "Cannot find function \n");
-      }
-      Py_XDECREF(pFunc);
-      Py_DECREF(pModule);
-    }
-    else {
-        PyErr_Print();
-        fprintf(stderr, "Failed to load \n");
-    }
+    /*Training*/
+    nbc = NaiveBayesClassifier<>(commaData, target, 2);
 
     trained= true;
     
@@ -455,66 +426,20 @@ void agregar_calibracion_cruzada_y_calibracion_mutada(conjunto * co)
 
 
     //---------Predicción del Modelo---------
+
+    if(debug){
+      cout<<"Utilizando Modelo"<<endl;
+    };
+
+    arma::Row<size_t> predictions;
     if (trained){
+      string holdString = transformar_dato(&calibracion_cruzada, mut);
+      arma::mat holdData(holdString); 
+      holdData = holdData.t();
+      nbc.Classify(holdData, predictions);
 
-      /* Cambio de directorio base */
-      Py_Initialize();
-      PyRun_SimpleString("import sys");
-      PyRun_SimpleString("import os");
-      PyRun_SimpleString("sys.path.append(os.getcwd())");
-      pName = PyUnicode_DecodeFSDefault("modelos");
-
-      pModule = PyImport_Import(pName);
-      Py_DECREF(pName);
-      if (pModule != NULL) {
-
-        pFunc = PyObject_GetAttrString(pModule, "load_model");
-        /* pFunc is a new reference */
-          
-        if (pFunc && PyCallable_Check(pFunc)) {
-          /* Tupla de parametros */
-          pArgs = PyTuple_New(cantidad_parametros+1);
-          for (int i = 0; i < cantidad_parametros; ++i) {
-              pValue = PyLong_FromLong(calibracion_mutada.parametro[i]);
-              if (!pValue) {
-                  Py_DECREF(pArgs);
-                  Py_DECREF(pModule);
-                  fprintf(stderr, "Cannot convert argument\n");
-                  
-              }
-              PyTuple_SetItem(pArgs, i, pValue);
-          }
-          pValue = PyLong_FromLong(mut);
-          PyTuple_SetItem(pArgs, cantidad_parametros, pValue);
-            
-          pValue = PyObject_CallObject(pFunc, pArgs);
-
-          Py_DECREF(pArgs);
-          if (pValue != NULL) {
-              fprintf(stderr,"Call Succesful\n");
-          }
-          else {
-              Py_DECREF(pFunc);
-              Py_DECREF(pModule);
-              PyErr_Print();
-              fprintf(stderr,"Call failed\n");
-              
-          }
-        }
-        else {
-            if (PyErr_Occurred())
-                PyErr_Print();
-            fprintf(stderr, "Cannot find function \n");
-        }
-        Py_XDECREF(pFunc);
-        Py_DECREF(pModule);
-      }
-      else {
-          PyErr_Print();
-          fprintf(stderr, "Failed to load \n");
-      }
       if(debug){
-        cout<<"Clase segun el modelo: "<< PyLong_AsLong(pValue) <<endl;
+        cout<<"Clase segun el modelo: "<< predictions[0] <<endl;
       };
     }
     /****************************************/
@@ -533,7 +458,7 @@ void agregar_calibracion_cruzada_y_calibracion_mutada(conjunto * co)
         if (evalueted== false) guardar_datos(&calibracion_mutada, "1", mut); //Se debería mutar
 
         if(trained  && numDatos <= evalThreshold){ //Evaluacion
-          if(PyLong_AsLong(pValue) == 1){
+          if(predictions[0] == 1){
             tp++;
           } else{
             fn++;
@@ -542,7 +467,7 @@ void agregar_calibracion_cruzada_y_calibracion_mutada(conjunto * co)
       } else {
         if (evalueted== false) guardar_datos(&calibracion_mutada, "0", mut); // No se debería mutar
         if(trained  && numDatos <= evalThreshold){ //Evaluacion
-          if(PyLong_AsLong(pValue) == 1){
+          if(predictions[0] == 1){
             fp++;
           } else{
             tn++;
@@ -552,8 +477,7 @@ void agregar_calibracion_cruzada_y_calibracion_mutada(conjunto * co)
       }
 
       //Se salta la mutacion
-      if (trained==true && evalueted==true && PyLong_AsLong(pValue) == 0) {
-        Py_DECREF(pValue);
+      if (trained==true && evalueted==true && predictions[0] == 0) {
         break;
       }
 
